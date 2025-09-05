@@ -154,13 +154,14 @@ vim.opt.inccommand = 'split'
 vim.opt.cursorline = true
 
 -- Minimal number of screen lines to keep above and below the cursor.
-vim.opt.scrolloff = 10
+vim.opt.scrolloff = 20
 
 -- if performing an operation that would fail due to unsaved changes in the buffer (like `:q`),
 -- instead raise a dialog asking if you wish to save the current file(s)
 -- See `:help 'confirm'`
 vim.opt.confirm = true
 
+vim.opt.colorcolumn = '80'
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`
 
@@ -168,6 +169,63 @@ vim.opt.confirm = true
 --  See `:help hlsearch`
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
+vim.keymap.set('n', '<leader>gp', function()
+  -- 1. Show git status in a floating window
+  local output = vim.fn.systemlist 'git status --short'
+  if #output == 0 then
+    print 'Nothing to commit.'
+    return
+  end
+
+  -- Create a scratch floating window to show status
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, output)
+  local width = math.floor(vim.o.columns * 0.6)
+  local height = math.floor(vim.o.lines * 0.6)
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = 'editor',
+    width = width,
+    height = height,
+    row = math.floor((vim.o.lines - height) / 2),
+    col = math.floor((vim.o.columns - width) / 2),
+    style = 'minimal',
+    border = 'rounded',
+  })
+
+  -- 2. Ask for confirmation
+  vim.ui.select({ 'Yes', 'No' }, { prompt = 'Continue with commit?' }, function(choice)
+    if choice ~= 'Yes' then
+      vim.api.nvim_win_close(win, true)
+      return
+    end
+
+    -- 3. Ask for commit message
+    vim.ui.input({ prompt = 'Enter commit message: ' }, function(input)
+      vim.api.nvim_win_close(win, true)
+      if not input or input == '' then
+        print 'Commit cancelled.'
+        return
+      end
+
+      -- 4. Call the alias with the message
+      local escaped_msg = vim.fn.shellescape('gp ' .. vim.fn.shellescape(input))
+      local command = 'zsh -i -c ' .. escaped_msg
+      vim.fn.jobstart(command, {
+        stdout_buffered = true,
+        on_stdout = function(_, data)
+          if data then
+            vim.notify(table.concat(data, '\n'), vim.log.levels.INFO, { title = 'Git Push' })
+          end
+        end,
+        on_stderr = function(_, err)
+          if err then
+            vim.notify(table.concat(err, '\n'), vim.log.levels.ERROR, { title = 'Git Push Error' })
+          end
+        end,
+      })
+    end)
+  end)
+end, { desc = 'Git push with confirmation and message' })
 -- Diagnostic keymaps
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
 
@@ -193,7 +251,7 @@ vim.keymap.set('n', '<C-h>', '<C-w><C-h>', { desc = 'Move focus to the left wind
 vim.keymap.set('n', '<C-l>', '<C-w><C-l>', { desc = 'Move focus to the right window' })
 vim.keymap.set('n', '<C-j>', '<C-w><C-j>', { desc = 'Move focus to the lower window' })
 vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper window' })
-
+vim.keymap.set('n', '-', '<CMD>Oil<CR>', { desc = 'Open parent directory' })
 -- NOTE: Some terminals have coliding keymaps or are not able to send distinct keycodes
 -- vim.keymap.set("n", "<C-S-h>", "<C-w>H", { desc = "Move window to the left" })
 -- vim.keymap.set("n", "<C-S-l>", "<C-w>L", { desc = "Move window to the right" })
@@ -275,7 +333,9 @@ require('lazy').setup({
       },
     },
   },
-
+  {
+    'tpope/vim-fugitive',
+  },
   {
     'stevearc/oil.nvim',
     ---@module 'oil'
@@ -420,7 +480,7 @@ require('lazy').setup({
           --   mappings = {
           --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
           --   },
-          file_ignore_patterns = { 'node_modules', '__generated__' },
+          file_ignore_patterns = { 'node_modules', '__generated__', '.git', '.git' },
         },
         pickers = {
           find_files = {
@@ -919,7 +979,7 @@ require('lazy').setup({
     priority = 1000,
     opts = {},
   },
-
+  { 'Mofiqul/dracula.nvim', priority = 1001 },
   { -- You can easily change to a different colorscheme.
     'catppuccin/nvim',
     priority = 1000,
@@ -974,7 +1034,7 @@ require('lazy').setup({
       }
 
       -- setup must be called before loading
-      vim.cmd.colorscheme 'catppuccin-macchiato'
+      vim.cmd.colorscheme 'dracula'
     end,
   },
   -- Highlight todo, notes, etc in comments
@@ -1055,7 +1115,6 @@ require('lazy').setup({
   -- require 'kickstart.plugins.debug',
   -- require 'kickstart.plugins.indent_line',
   require 'kickstart.plugins.lint',
-  require 'kickstart.plugins.autopairs',
   -- require 'kickstart.plugins.neo-tree',
   -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
 
@@ -1063,7 +1122,7 @@ require('lazy').setup({
   --    This is the easiest way to modularize your config.
   --
   --  Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
-  -- { import = 'custom.plugins' },
+  { import = 'custom.plugins' },
   --
   -- For additional information with loading, sourcing and examples see `:help lazy.nvim-🔌-plugin-spec`
   -- Or use telescope!
